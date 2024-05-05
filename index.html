@@ -2,17 +2,51 @@
 <html>
 <head>
   <title>TF.js Optical Flow</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-  <script src = "./model.js"></script>
+  <meta name="viewport" content="width=device-width">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
+  <style>
+    body{
+      font-family:sans-serif;
+      min-height: 100vh;
+      min-width: 100vw;
+      overflow-x: hidden;
+      background: radial-gradient(circle at center, #555,#000);
+      display:flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      flex-direction: column;
+      margin:0;
+    }
+    #loading{
+      color:#fff;
+      font-size: 2em;
+      padding: 2em;
+    }
+    #container{
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: row;
+      flex-wrap:wrap;
+    }
+  </style>
 </head>
 <body>
+  <div id="loading">Please wait. Downloading and constructing the model. This make take a few minutes.</div>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src = "./model.js"></script>
+  <section id="container" style="display:none;">
   <video id="videoElement" width="256" height="192" autoplay style="display:none;"></video>
   <!-- <img src = "ezgif-frame-040.png" id="i1"/>
   <img src="ezgif-frame-041.png" id="i2"> -->
   <canvas id="canvas" width="256" height="192" ></canvas>
-  <canvas id="canvas2" width="256" height="192"></canvas>
+  <canvas id="canvas2" width="256" height="192"></canvas></section>
+  
   <script>
-    const colorwheel = tf.tensor2d([[255,   0,   0], [255,  17,   0], [255,  34,   0], [255,  51,   0], [255,  68,   0], [255,  85,   0], [255, 102,   0], [255, 119,   0], [255, 136,   0], [255, 153,   0], [255, 170,   0], [255, 187,   0], [255, 204,   0], [255, 221,   0], [255, 238,   0], [255, 255,   0], [213, 255,   0], [170, 255,   0], [128, 255,   0], [ 85, 255,   0], [ 43, 255,   0], [  0, 255,   0], [  0, 255,  63], [  0, 255, 127], [  0, 255, 191], [  0, 255, 255], [  0, 232, 255], [  0, 209, 255], [  0, 186, 255], [  0, 163, 255], [  0, 140, 255], [  0, 116, 255], [  0,  93, 255], [  0,  70, 255], [  0,  47, 255], [  0,  24, 255], [  0,   0, 255], [ 19,   0, 255], [ 39,   0, 255], [ 58,   0, 255], [ 78,   0, 255], [ 98,   0, 255], [117,   0, 255], [137,   0, 255], [156,   0, 255], [176,   0, 255], [196,   0, 255], [215,   0, 255], [235,   0, 255], [255,   0, 255], [255,   0, 213], [255,   0, 170], [255,   0, 128], [255,   0,  85], [255,   0,  43]], [55,3]);
+    const colorwheel = tf.tensor2d([[255,   0,   0], [255,  17,   0], [255,  34,   0], [255,  51,   0], [255,  68,   0], [255,  85,   0], [255, 102,   0], [255, 119,   0], [255, 136,   0], [255, 153,   0], [255, 170,   0], [255, 187,   0], [255, 204,   0], [255, 221,   0], [255, 238,   0], [255, 255,   0], [213, 255,   0], [170, 255,   0], [128, 255,   0], [ 85, 255,   0], [ 43, 255,   0], [  0, 255,   0], [  0, 255,  63], [  0, 255, 127], [  0, 255, 191], [  0, 255, 255], [  0, 232, 255], [  0, 209, 255], [  0, 186, 255], [  0, 163, 255], [  0, 140, 255], [  0, 116, 255], [  0,  93, 255], [  0,  70, 255], [  0,  47, 255], [  0,  24, 255], [  0,   0, 255], [ 19,   0, 255], [ 39,   0, 255], [ 58,   0, 255], [ 78,   0, 255], [ 98,   0, 255], [117,   0, 255], [137,   0, 255], [156,   0, 255], [176,   0, 255], [196,   0, 255], [215,   0, 255], [235,   0, 255], [255,   0, 255], [255,   0, 213], [255,   0, 170], [255,   0, 128], [255,   0,  85], [255,   0,  43]], [55,3]).toFloat();
     function flowToImage(flow) {
       const UNKNOWN_FLOW_THRESH = 1e7; 
       const h = flow.shape[0];
@@ -105,21 +139,26 @@
       return model;
     }
     async function run() {
-
+      let done1 = false;
+      let done = false;
       const video = document.getElementById('videoElement');
       const canvas = document.getElementById('canvas');
       const canvas2 = document.getElementById('canvas2');
       const ctx = canvas.getContext('2d',{ willReadFrequently: true });
       const ctx2 = canvas2.getContext('2d');
-      
+      const loading = document.getElementById('loading');
+      const container = document.getElementById("container");
       await loadModel();
       const model = new PWCNet();
+      loading.innerText="Please Wait."
       model.assignWeights(modeltf);
-
+      // loading.remove();
+      container.style.display="block";
       if (navigator.mediaDevices.getUserMedia) {
         navigator.mediaDevices.getUserMedia({ video: true })
           .then(function(stream) {
             video.srcObject = stream;
+            done1=true;
           })
           .catch(function(err0r) {
             console.log("Something went wrong!");
@@ -156,7 +195,11 @@
         
         const imgd = new ImageData(new Uint8ClampedArray(imagedata_flow), sh[1], sh[0]);
         ctx2.putImageData(imgd,0,0);
-        requestAnimationFrame(predict);
+        if(!done && done1){
+          done=true;
+          loading.innerText="Optical Flow";
+        }
+        requestAnimationFrame(predict);s
         
       }
       predict();
