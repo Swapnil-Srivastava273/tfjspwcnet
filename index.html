@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TF.js Optical Flow</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src = "./model.js"></script>
+</head>
+<body>
+  <video id="videoElement" width="256" height="192" autoplay style="display:none;"></video>
+  <!-- <img src = "ezgif-frame-040.png" id="i1"/>
+  <img src="ezgif-frame-041.png" id="i2"> -->
+  <canvas id="canvas" width="256" height="192" ></canvas>
+  <canvas id="canvas2" width="256" height="192"></canvas>
+  <script>
+    const colorwheel = tf.tensor2d([[255,   0,   0], [255,  17,   0], [255,  34,   0], [255,  51,   0], [255,  68,   0], [255,  85,   0], [255, 102,   0], [255, 119,   0], [255, 136,   0], [255, 153,   0], [255, 170,   0], [255, 187,   0], [255, 204,   0], [255, 221,   0], [255, 238,   0], [255, 255,   0], [213, 255,   0], [170, 255,   0], [128, 255,   0], [ 85, 255,   0], [ 43, 255,   0], [  0, 255,   0], [  0, 255,  63], [  0, 255, 127], [  0, 255, 191], [  0, 255, 255], [  0, 232, 255], [  0, 209, 255], [  0, 186, 255], [  0, 163, 255], [  0, 140, 255], [  0, 116, 255], [  0,  93, 255], [  0,  70, 255], [  0,  47, 255], [  0,  24, 255], [  0,   0, 255], [ 19,   0, 255], [ 39,   0, 255], [ 58,   0, 255], [ 78,   0, 255], [ 98,   0, 255], [117,   0, 255], [137,   0, 255], [156,   0, 255], [176,   0, 255], [196,   0, 255], [215,   0, 255], [235,   0, 255], [255,   0, 255], [255,   0, 213], [255,   0, 170], [255,   0, 128], [255,   0,  85], [255,   0,  43]], [55,3]);
+    function flowToImage(flow) {
+      const UNKNOWN_FLOW_THRESH = 1e7; 
+      const h = flow.shape[0];
+      const w = flow.shape[1];
+
+      const u = flow.slice([0, 0, 0], [h, w, 1]);
+      const v = flow.slice([0, 0, 1], [h, w, 1]);
+
+      let maxu = -999;
+      let maxv = -999;
+      let minu = 999;
+      let minv = 999;
+
+      const idxUnknow = tf.logicalOr(tf.abs(u).greater(UNKNOWN_FLOW_THRESH), tf.abs(v).greater(UNKNOWN_FLOW_THRESH));
+      const uFiltered = tf.where(idxUnknow, tf.zerosLike(u), u);
+      const vFiltered = tf.where(idxUnknow, tf.zerosLike(v), v);
+
+      maxu = Math.max(maxu, tf.max(u).dataSync()[0]);
+      minu = Math.min(minu, tf.min(u).dataSync()[0]);
+
+      maxv = Math.max(maxv, tf.max(v).dataSync()[0]);
+      minv = Math.min(minv, tf.min(v).dataSync()[0]);
+
+      const rad = tf.sqrt(tf.add(tf.square(uFiltered), tf.square(vFiltered)));
+      const maxrad = Math.max(-1, tf.max(rad).dataSync()[0]);
+
+      const epsilon = tf.scalar(1e-9);
+      const normalizedU = tf.div(uFiltered, tf.add(maxrad, epsilon));
+      const normalizedV = tf.div(vFiltered, tf.add(maxrad, epsilon));
+
+      const img = computeColor(normalizedU, normalizedV);
+
+      const idx = tf.tile(idxUnknow.reshape([h, w, 1]), [1, 1, 3]);
+      const imgFiltered = tf.where(idx, tf.zerosLike(img), img);
+
+      return imgFiltered;
+  }
+
+
+    // let ans = [];
+
+    function computeColor(u, v) {
+        // u = tf.cast(u,"int32");
+        // v = tf.cast(v,"int32");
+        const h = u.shape[0];
+        const w = u.shape[1];
+
+        const nanIdx = tf.logicalOr(tf.isNaN(u), tf.isNaN(v));
+        u = tf.where(nanIdx, 0, u);
+        v = tf.where(nanIdx, 0, v);
+
+        const ncols = colorwheel.shape[0];
+
+        const rad = tf.sqrt(tf.add(tf.square(u), tf.square(v)));
+
+        const atan = tf.div(tf.atan2(tf.neg(v), tf.neg(u)),tf.scalar(Math.PI));
+        const a = tf.div(tf.add(atan, tf.scalar(1)), tf.scalar(2));
+
+
+        const fk = tf.add(tf.mul(a, tf.scalar(ncols - 1)), tf.scalar(1));
+
+        const k0 = tf.cast(fk.floor(),"int32");
+        let k1 = tf.add(k0, tf.scalar(1))
+        k1 = tf.where(tf.equal(k1, ncols + 1), tf.scalar(1), k1);
+        const f = tf.sub(fk, k0);
+        // k1 = tf.cast(k1,"int32");
+        const color = tf.buffer([h, w, 3]);
+        // const colorans = tf.variable(color.toTensor());
+        let arr = [];
+        for (let i = 0; i < 3; i++) {
+            const tmp = colorwheel.slice([0, i], [ncols, 1]).reshape([ncols]);
+            const col0 = tmp.gather(tf.cast(k0.sub(1),"int32")).div(255);
+            const col1 = tmp.gather(tf.cast(k1.sub(1),"int32")).div(255);
+            let col = tf.add(tf.mul(tf.sub(1, f), col0), tf.mul(f, col1));
+
+            const idx = tf.lessEqual(rad, 1);
+            col = tf.where(idx, tf.sub(1,tf.mul(rad,tf.sub(1,col))), col);
+            col = tf.where(tf.logicalNot(idx), tf.mul(col, 0.75), col);
+
+            
+            arr.push(tf.cast(tf.mul(255, col).floor(),"int32"));
+        }
+
+        return  tf.concat(arr, axis=2)
+    }
+    let modeltf;
+    async function loadModel() {
+      const model = await tf.loadGraphModel('./js/jsmodel7/model.json');
+      modeltf = model;
+      return model;
+    }
+    async function run() {
+
+      const video = document.getElementById('videoElement');
+      const canvas = document.getElementById('canvas');
+      const canvas2 = document.getElementById('canvas2');
+      const ctx = canvas.getContext('2d',{ willReadFrequently: true });
+      const ctx2 = canvas2.getContext('2d');
+      
+      await loadModel();
+      const model = new PWCNet();
+      model.assignWeights(modeltf);
+
+      if (navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then(function(stream) {
+            video.srcObject = stream;
+          })
+          .catch(function(err0r) {
+            console.log("Something went wrong!");
+          });
+      }
+
+      async function predict() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData1 = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        await new Promise(r => setTimeout(r, 50));
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData2 = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const [imagedata_flow, sh] = tf.tidy(()=>{
+          const inputTensor1 = tf.div(tf.browser.fromPixels(imageData1).toFloat(), 255);
+          const inputTensor2 = tf.div(tf.browser.fromPixels(imageData2).toFloat(), 255);
+          const shape = inputTensor1.shape;
+          const inputTensor = tf.concat([inputTensor1, inputTensor2], 2).slice([0,0,0],[Math.floor(shape[0]/64)*64,Math.floor(shape[1]/64)*64,6]);
+          const s = inputTensor.shape
+          const predictions = model.call(inputTensor.reshape([1,s[0],s[1],s[2]]),0);
+          const pred_shape = predictions.shape;
+          const data = predictions.reshape([pred_shape[1],pred_shape[2],pred_shape[3]]);
+          const s1 = data.shape;
+          const data1 = tf.image.resizeBilinear(data, [s1[0]*4, s1[1]*4]);
+          const img2 = flowToImage(data1);
+          let sh = img2.shape;
+          
+          sh = img2.shape
+          const data2 = tf.concat([img2, tf.fill([sh[0],sh[1],1],255)], 2);
+          return [data2.flatten().arraySync(),sh];
+        });
+        
+        
+        const imgd = new ImageData(new Uint8ClampedArray(imagedata_flow), sh[1], sh[0]);
+        ctx2.putImageData(imgd,0,0);
+        requestAnimationFrame(predict);
+        
+      }
+      predict();
+    }
+
+    document.addEventListener('DOMContentLoaded', run);
+  </script>
+</body>
+</html>
